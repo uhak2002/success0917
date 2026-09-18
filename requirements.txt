@@ -1,4 +1,3 @@
 # Project dependencies
-# Add packages as the project grows, e.g.:
-# requests>=2.31.0
-# python-dotenv>=1.0.0
+openai>=1.40.0
+python-dotenv>=1.0.0
