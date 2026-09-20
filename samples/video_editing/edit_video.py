@@ -38,7 +38,11 @@ class SilenceInterval:
 
 
 def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, check=True, text=True, capture_output=True, **kwargs)
+    try:
+        return subprocess.run(cmd, check=True, text=True, capture_output=True, **kwargs)
+    except subprocess.CalledProcessError as e:
+        print(e.stderr, file=sys.stderr)
+        raise
 
 
 def ffprobe_duration(path: Path) -> float:
@@ -150,7 +154,10 @@ def burn_captions(
         f"FontName={font},FontSize={font_size},PrimaryColour={font_color},"
         f"OutlineColour={outline_color},BorderStyle=1,Outline=2,Alignment={alignment}"
     )
-    srt_escaped = str(srt_path).replace(":", r"\:")
+    # ffmpeg의 필터그래프 문법에서는 콜론(:)이 옵션 구분자, 백슬래시(\)가 이스케이프 문자로
+    # 쓰이므로, Windows 경로("C:\..." 또는 "outbox\..." 형태)를 그대로 넣으면 깨진다.
+    # 슬래시로 통일하고 드라이브 문자 뒤 콜론만 이스케이프해서 넘긴다.
+    srt_escaped = str(srt_path).replace("\\", "/").replace(":", r"\:")
     cmd = [
         "ffmpeg", "-y", "-i", str(src),
         "-vf", f"subtitles={srt_escaped}:force_style='{style}'",
