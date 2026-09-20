@@ -7,7 +7,9 @@
 
 1. **무음 구간 자동 컷 편집** — ffmpeg `silencedetect`로 무음 구간을 찾고, `select`/`aselect` 필터로 잘라낸 뒤 다시 하나로 이어붙입니다. GPU 없이 CPU만으로 동작합니다.
 2. **자동 자막 생성** — 컷 편집이 끝난 오디오를 OpenAI Whisper API(`whisper-1`)로 보내 SRT 자막을 생성합니다. (API 키 필요)
-3. **자막 굽기(burn-in)** — ffmpeg `subtitles` 필터(libass)로 폰트/크기/색상/위치를 지정해 자막을 영상에 입힙니다.
+3. **(선택) MZ 말투로 자막 재작성** (`--mz-style`) — Whisper가 뽑은 자막을 OpenAI Chat API(`gpt-4o-mini`)로 다시 써서 한국 MZ세대 캐주얼한 말투/신조어 톤으로 바꿉니다. 타이밍은 원본 그대로 유지됩니다.
+4. **(선택) 예능풍 효과** (`--variety-fx`) — 자막 내용을 분석해 놀라움/강조 포인트를 찾고, 그 순간에 화면을 살짝 확대하는 "줌펀치" 효과와 "헐"/"대박"/"충격" 같은 강조 스탬프 텍스트를 짧게 띄웁니다 (흑백요리사류 예능 편집 스타일).
+5. **자막 굽기(burn-in)** — ffmpeg `subtitles`/`drawtext` 필터(libass)로 폰트/크기/색상/위치를 지정해 자막·줌펀치·스탬프를 영상에 입힙니다.
 
 무거운 인코딩·업스케일링·얼굴 모자이크 같은 GPU 작업은 포함하지 않았습니다 (강의에서 "GPU가 좋은 로컬 PC에서 처리"하라고 안내한 부분 — 필요해지면 이 스크립트 뒤에 별도 단계로 추가하면 됩니다).
 
@@ -38,7 +40,12 @@ python samples/video_editing/edit_video.py samples/video_editing/inbox/my_video.
 | `--font`, `--font-size` | 자막 폰트/크기 | NanumGothic, 28 |
 | `--font-color`, `--outline-color` | 자막 색상 (ASS `&HBBGGRR` 형식) | 흰색 / 검정 |
 | `--caption-position` | `bottom` / `middle` / `top` | bottom |
-| `-o, --output` | 출력 경로 | `outbox/<입력파일명>` |
+| `--mz-style` | 자막을 MZ 말투로 재작성 (추가 API 비용) | - |
+| `--variety-fx` | 줌펀치 + 강조 스탬프 추가 (자막 필요, 추가 API 비용) | - |
+| `--zoom-amount` | 줌펀치 확대 비율 | 0.18 |
+| `--stamp-font-size` | 강조 스탬프 글자 크기 | 64 |
+| `--stamp-font-file` | 강조 스탬프용 폰트 파일 경로 | Windows는 맑은 고딕 자동 지정 |
+| `-o, --output` | 출력 경로 | `samples/video_editing/outbox/<입력파일명>` |
 
 예시:
 ```bash
@@ -48,7 +55,12 @@ python samples/video_editing/edit_video.py inbox/video.mp4 --no-captions
 # 자막 스타일 커스터마이즈
 python samples/video_editing/edit_video.py inbox/video.mp4 \
   --font "NanumGothicBold" --font-size 32 --caption-position bottom --language ko
+
+# MZ 말투 + 예능풍 줌펀치/강조 스탬프
+python samples/video_editing/edit_video.py inbox/video.mp4 --mz-style --variety-fx
 ```
+
+`--mz-style`, `--variety-fx`는 자막 생성 후 OpenAI Chat API(`gpt-4o-mini`)를 추가로 호출하므로 API 비용이 조금 더 듭니다. `--variety-fx`는 자막이 있어야 동작하므로 `--no-captions`와 함께 쓸 수 없습니다.
 
 ## inbox / outbox 폴더 (구글 드라이브 연동 개념)
 
