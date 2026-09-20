@@ -341,7 +341,7 @@ def render_final(
     if zoom_moments:
         width, height = ffprobe_dimensions(src)
         stages.append(build_zoom_punch_filter(zoom_moments, width, height, zoom_amount))
-    stages.append(f"subtitles={srt_escaped}:force_style='{style}'")
+    stages.append(f"subtitles='{srt_escaped}':force_style='{style}'")
     if stamp_moments:
         stages.extend(build_stamp_filters(stamp_moments, stamp_font_size, stamp_font_file))
 
