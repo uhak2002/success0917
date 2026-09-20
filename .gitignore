@@ -42,3 +42,7 @@ htmlcov/
 
 # Generated assets
 samples/output_icons/
+samples/video_editing/inbox/*
+samples/video_editing/outbox/*
+!samples/video_editing/inbox/.gitkeep
+!samples/video_editing/outbox/.gitkeep

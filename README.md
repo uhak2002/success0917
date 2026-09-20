@@ -19,6 +19,7 @@ success0917/
 
 ### 요구 사항
 - Python 3.10+
+- ffmpeg (영상 편집 샘플 사용 시 — `samples/video_editing/`)
 
 ### 설치
 ```bash
