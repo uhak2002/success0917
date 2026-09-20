@@ -202,6 +202,24 @@ def parse_srt(srt_text: str) -> list[CaptionSegment]:
     return segments
 
 
+def dedupe_consecutive_segments(segments: list[CaptionSegment]) -> list[CaptionSegment]:
+    """연속으로 완전히 같은 텍스트가 반복되면(Whisper가 가끔 저지르는 반복 환청 등) 하나로 합친다."""
+    if not segments:
+        return segments
+
+    merged = [CaptionSegment(segments[0].index, segments[0].start, segments[0].end, segments[0].text)]
+    for seg in segments[1:]:
+        prev = merged[-1]
+        if seg.text.strip() == prev.text.strip():
+            prev.end = seg.end
+        else:
+            merged.append(CaptionSegment(seg.index, seg.start, seg.end, seg.text))
+
+    for i, seg in enumerate(merged, start=1):
+        seg.index = i
+    return merged
+
+
 def format_srt(segments: list[CaptionSegment]) -> str:
     blocks = []
     for seg in segments:
@@ -232,9 +250,14 @@ def rewrite_mz_style(segments: list[CaptionSegment]) -> list[CaptionSegment]:
     """자막 텍스트를 한국 MZ세대 말투(신조어/캐주얼한 구어체)로 재작성한다."""
     lines = {str(seg.index): seg.text for seg in segments}
     system_prompt = (
-        "너는 한국어 자막을 MZ세대 말투(캐주얼한 구어체, 신조어, 유행어 섞은 톤)로 "
-        "재작성하는 편집자야. 의미는 최대한 유지하되 말투만 바꿔. "
-        "각 줄은 원문과 길이가 비슷하게 유지해서 자막 타이밍이 안 깨지게 해줘. "
+        "너는 한국 유튜브 예능 자막을 만드는 MZ세대 편집자야. "
+        "아래 문장들을 최대한 화끈하고 리액션 넘치는 MZ 말투로 다시 써. "
+        "'헐', '대박', 'ㄹㅇ', '찐', '인정', '실화냐', '노잼', '개-', '~함', '~임' 같은 "
+        "실제 신조어/유행어 표현을 자연스러운 곳에 적극적으로 섞어 넣어. "
+        "그냥 말투만 살짝 캐주얼하게 바꾸는 정도로는 부족해 — 진짜 MZ가 친구한테 카톡하듯이 써줘. "
+        "단, 원래 의미는 유지하고, 각 줄 길이는 원문과 비슷하게(±50% 이내) 유지해서 자막 타이밍이 안 깨지게 해줘. "
+        "예시: '많이는 아니지만 몇몇은 봤어요' -> '몇몇은 진짜 봤음 ㄹㅇ', "
+        "'물론 한국은 그들의 문화가 아니지만' -> '한국이랑은 좀 다른 문화이긴 한데'. "
         "입력은 {\"1\": \"원문\", \"2\": \"원문\", ...} 형식의 JSON이고, "
         "출력도 같은 키(줄 번호)에 재작성된 텍스트를 담은 JSON으로만 답해줘."
     )
@@ -259,11 +282,15 @@ def detect_emphasis_moments(segments: list[CaptionSegment], max_moments: int = 6
     lines = [{"index": seg.index, "start": seg.start, "end": seg.end, "text": seg.text} for seg in segments]
     system_prompt = (
         "너는 한국 예능 자막 PD야. 아래 자막 목록(각 줄에 index/start/end 초 단위 타임스탬프/text)을 보고, "
-        f"가장 놀랍거나 강조할 만한 순간을 최대 {max_moments}개 골라줘. "
-        "각 순간마다 화면에 잠깐 띄울 짧은 강조 단어(예: '헐', '대박', '충격', '레전드', '?!', '!!')를 하나 골라줘. "
+        f"가장 놀랍거나 강조할 만한 순간을 정확히 {max_moments}개 골라줘 (내용이 부족해도 상대적으로 "
+        "가장 흥미로운 순간들을 골라서 반드시 개수를 채워줘). "
+        "각 순간마다 화면 위에 잠깐 띄울 강조 단어를 반드시 '헐', '대박', '충격' 이 세 단어 중에서만 "
+        "골라줘 (다른 단어 쓰지 말고 이 세 개를 돌아가면서 사용해). "
+        "start는 반드시 그 자막(index)의 start~end 시간 범위 안에서 골라줘. "
         "출력은 반드시 JSON으로: "
-        "{\"moments\": [{\"start\": 숫자, \"end\": 숫자, \"stamp\": \"단어\"}, ...]} 형식으로만 답해줘. "
-        "end는 start보다 0.5~1.0초 정도 뒤로 잡아줘."
+        "{\"moments\": [{\"start\": 숫자, \"end\": 숫자, \"stamp\": \"헐|대박|충격 중 하나\"}, ...]} "
+        f"형식으로 정확히 {max_moments}개를 답해줘. "
+        "end는 start보다 0.6~1.0초 정도 뒤로 잡아줘."
     )
     result = _openai_chat_json(system_prompt, json.dumps(lines, ensure_ascii=False))
 
@@ -435,6 +462,12 @@ def main(argv: list[str] | None = None) -> int:
             extract_audio(working, audio_path)
             srt_text = transcribe_to_srt(audio_path, args.language)
             segments = parse_srt(srt_text)
+
+            deduped = dedupe_consecutive_segments(segments)
+            if len(deduped) != len(segments):
+                print(f"      반복 자막 {len(segments) - len(deduped)}개 병합 (Whisper 반복 오류 보정)")
+            segments = deduped
+            srt_text = format_srt(segments)
 
             if args.mz_style:
                 print("      자막을 MZ 말투로 재작성 중...")
